@@ -4,10 +4,10 @@
 .vscode
 .DS_Store
 
-bin/
-build/
-dist/
-storage/
+/bin/
+/build/
+/dist/
+/storage/
 
 # Local files
 *.env.local
