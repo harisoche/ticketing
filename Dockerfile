@@ -12,11 +12,15 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 COPY . .
 
 # Build all three commands. CGO is off because pgx is pure Go.
-ENV CGO_ENABLED=0
+ENV CGO_ENABLED=0 GOFLAGS=-p=2
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    go build -trimpath -ldflags='-s -w' -o /out/api     ./cmd/api && \
-    go build -trimpath -ldflags='-s -w' -o /out/migrate ./cmd/migrate && \
+    go build -trimpath -ldflags='-s -w' -o /out/api     ./cmd/api
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    go build -trimpath -ldflags='-s -w' -o /out/migrate ./cmd/migrate
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
     go build -trimpath -ldflags='-s -w' -o /out/seed    ./cmd/seed
 
 # ---- Runtime stage ----
