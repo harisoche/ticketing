@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Multi-stage build for the ticketing API + migrate + seed binaries.
 
-FROM golang:1.25-alpine3.20 AS builder
+FROM golang:1.25-alpine AS builder
 WORKDIR /src
 # Cache modules first.
 COPY go.mod go.sum ./
