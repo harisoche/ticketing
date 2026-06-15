@@ -1,0 +1,72 @@
+### Phase 4 — Ticket comments and unified timeline.
+###
+### Builds on Phase 3. Promote agent/admin roles via SQL once after registration.
+
+@host = http://localhost:8080
+@customerEmail = customer@example.com
+@agentEmail    = agent@example.com
+@adminEmail    = admin@example.com
+@password      = password123
+
+@customerToken = paste-customer-token
+@agentToken    = paste-agent-token
+@adminToken    = paste-admin-token
+@ticketId      = paste-ticket-uuid
+@commentId     = paste-comment-uuid
+
+### 1. Customer adds a comment
+POST {{host}}/api/v1/tickets/{{ticketId}}/comments
+Authorization: Bearer {{customerToken}}
+Content-Type: application/json
+
+{
+  "body": "The problem still happens after restarting the device."
+}
+
+### 2. Agent adds a comment (must be assigned)
+POST {{host}}/api/v1/tickets/{{ticketId}}/comments
+Authorization: Bearer {{agentToken}}
+Content-Type: application/json
+
+{
+  "body": "Investigating the auth service logs."
+}
+
+### 3. List comments (chronological)
+GET {{host}}/api/v1/tickets/{{ticketId}}/comments
+Authorization: Bearer {{customerToken}}
+
+### 4. Edit own comment (paste @commentId from step 1)
+PUT {{host}}/api/v1/tickets/{{ticketId}}/comments/{{commentId}}
+Authorization: Bearer {{customerToken}}
+Content-Type: application/json
+
+{
+  "body": "Updated: the problem only happens on the Android app build 1.2.3."
+}
+
+### 5. Non-author cannot edit (EXPECTED 403)
+PUT {{host}}/api/v1/tickets/{{ticketId}}/comments/{{commentId}}
+Authorization: Bearer {{agentToken}}
+Content-Type: application/json
+
+{
+  "body": "trying to edit someone else's"
+}
+
+### 6. Admin can edit any comment
+PUT {{host}}/api/v1/tickets/{{ticketId}}/comments/{{commentId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "body": "[moderated by admin]"
+}
+
+### 7. Delete a comment
+DELETE {{host}}/api/v1/tickets/{{ticketId}}/comments/{{commentId}}
+Authorization: Bearer {{customerToken}}
+
+### 8. Unified timeline — histories + comments, sorted ascending
+GET {{host}}/api/v1/tickets/{{ticketId}}/timeline
+Authorization: Bearer {{customerToken}}

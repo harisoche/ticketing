@@ -1,0 +1,998 @@
+openapi: 3.0.3
+info:
+  title: Ticketing API
+  version: 0.8.0
+  description: |
+    Educational ticketing backend built across Phases 1–8.
+
+    All authenticated routes accept a `Authorization: Bearer <jwt>` header.
+    Responses follow a consistent envelope: `{ data, message }` for
+    successes and `{ message, errors? }` for failures. Paginated list
+    responses include a `meta` block.
+servers:
+  - url: http://localhost:8080
+    description: Local development
+tags:
+  - name: Auth
+  - name: User
+  - name: Categories
+  - name: Tickets
+  - name: Comments
+  - name: Attachments
+  - name: Dashboard
+  - name: Notifications
+  - name: Admin
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [Auth]
+      summary: Liveness probe
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthOk" }
+
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterRequest" }
+      responses:
+        "201": { $ref: "#/components/responses/AuthSuccess" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Exchange credentials for a bearer token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/AuthSuccess" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke the current session
+      responses:
+        "200":
+          description: Logged out.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Empty" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/v1/me:
+    get:
+      tags: [User]
+      summary: Current user profile
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserProfileResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    patch:
+      tags: [User]
+      summary: Update display name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 2
+                  maxLength: 100
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/UserProfileResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/categories:
+    get:
+      tags: [Categories]
+      summary: List active categories
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CategoryListResponse" }
+
+  /api/v1/ticket-categories:
+    get:
+      tags: [Categories]
+      summary: List active categories (alias)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CategoryListResponse" }
+
+  /api/v1/admin/categories:
+    get:
+      tags: [Admin]
+      summary: List ALL categories (including inactive)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CategoryAdminListResponse" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Admin]
+      summary: Create a new category (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CategoryAdminCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CategoryAdminResponse" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/admin/categories/{category_id}:
+    put:
+      tags: [Admin]
+      summary: Update category fields / activation
+      parameters:
+        - $ref: "#/components/parameters/CategoryID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CategoryAdminUpdate" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CategoryAdminResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Admin]
+      summary: Deactivate a category
+      parameters:
+        - $ref: "#/components/parameters/CategoryID"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CategoryAdminResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/tickets:
+    get:
+      tags: [Tickets]
+      summary: List tickets (role-scoped + paginated + filterable)
+      parameters:
+        - { name: page,         in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: per_page,     in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { name: q,            in: query, schema: { type: string, maxLength: 200 }, description: "ILIKE search on title + description" }
+        - { name: search,       in: query, schema: { type: string }, description: "Legacy Phase 2 keyword (code OR title)" }
+        - { name: view,         in: query, schema: { type: string, enum: [created_by_me, assigned_to_me, all] } }
+        - { name: scope,        in: query, schema: { type: string, enum: [created_by_me, assigned_to_me] }, description: "Phase 3 alias of view" }
+        - { name: status,       in: query, schema: { type: string, enum: [open, in_progress, resolved, closed, reopened] } }
+        - { name: priority,     in: query, schema: { type: string, enum: [low, medium, high, urgent] } }
+        - { name: category_id,  in: query, schema: { type: string, format: uuid } }
+        - { name: created_by,   in: query, schema: { type: integer, format: int64 }, description: "admin only" }
+        - { name: assigned_to,  in: query, schema: { type: integer, format: int64 }, description: "admin only" }
+        - { name: created_from, in: query, schema: { type: string, format: date-time } }
+        - { name: created_to,   in: query, schema: { type: string, format: date-time } }
+        - { name: sort_by,      in: query, schema: { type: string, enum: [created_at, updated_at, priority, status, code] } }
+        - { name: sort_order,   in: query, schema: { type: string, enum: [asc, desc] } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TicketListResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    post:
+      tags: [Tickets]
+      summary: Create a ticket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTicketRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TicketResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/tickets/{id}:
+    parameters: [{ $ref: "#/components/parameters/TicketID" }]
+    get:
+      tags: [Tickets]
+      summary: Read one ticket
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TicketResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Tickets]
+      summary: Update title / description / category / priority
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateTicketRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TicketResponse" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Tickets]
+      summary: Soft delete a ticket
+      responses:
+        "204": { description: Deleted }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/tickets/{id}/status:
+    patch:
+      tags: [Tickets]
+      summary: Apply a status transition
+      parameters: [{ $ref: "#/components/parameters/TicketID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateStatusRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TicketResponse" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/tickets/{id}/assign:
+    patch:
+      tags: [Tickets]
+      summary: Assign or reassign an agent (admin only)
+      parameters: [{ $ref: "#/components/parameters/TicketID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AssignTicketRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TicketResponse" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/tickets/{id}/classification:
+    put:
+      tags: [Tickets]
+      summary: Update category and/or priority (admin or assigned agent)
+      parameters: [{ $ref: "#/components/parameters/TicketID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                category_id: { type: string, format: uuid }
+                priority:    { type: string, enum: [low, medium, high, urgent] }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TicketResponse" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/tickets/{id}/histories:
+    get:
+      tags: [Tickets]
+      summary: Workflow history rows (chronological)
+      parameters: [{ $ref: "#/components/parameters/TicketID" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HistoryListResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/tickets/{id}/timeline:
+    get:
+      tags: [Tickets]
+      summary: Histories + comments merged (Phase 4)
+      parameters: [{ $ref: "#/components/parameters/TicketID" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimelineListResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/tickets/{id}/comments:
+    parameters: [{ $ref: "#/components/parameters/TicketID" }]
+    get:
+      tags: [Comments]
+      summary: List comments (oldest first)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommentListResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [Comments]
+      summary: Add a plain-text comment (≤5000 chars)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CommentRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommentResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/tickets/{id}/comments/{comment_id}:
+    parameters:
+      - $ref: "#/components/parameters/TicketID"
+      - $ref: "#/components/parameters/CommentID"
+    put:
+      tags: [Comments]
+      summary: Edit a comment (author or admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CommentRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommentResponse" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Comments]
+      summary: Hard delete a comment (author or admin)
+      responses:
+        "204": { description: Deleted }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/tickets/{id}/attachments:
+    parameters: [{ $ref: "#/components/parameters/TicketID" }]
+    get:
+      tags: [Attachments]
+      summary: List attachment metadata (oldest first)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AttachmentListResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [Attachments]
+      summary: Upload one file (multipart field `file`, ≤5 MiB)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AttachmentResponse" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { description: "Request body too large." }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/tickets/{id}/attachments/{attachment_id}/download:
+    get:
+      tags: [Attachments]
+      summary: Stream the file body
+      parameters:
+        - $ref: "#/components/parameters/TicketID"
+        - $ref: "#/components/parameters/AttachmentID"
+      responses:
+        "200":
+          description: OK
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: 'attachment; filename="screenshot.png"'
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/tickets/{id}/attachments/{attachment_id}:
+    delete:
+      tags: [Attachments]
+      summary: Hard delete an attachment (author or admin)
+      parameters:
+        - $ref: "#/components/parameters/TicketID"
+        - $ref: "#/components/parameters/AttachmentID"
+      responses:
+        "204": { description: Deleted }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/dashboard/summary:
+    get:
+      tags: [Dashboard]
+      summary: Role-scoped dashboard with SLA + unread counts
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DashboardResponse" }
+
+  /api/v1/notifications:
+    get:
+      tags: [Notifications]
+      summary: List the actor's notifications (Phase 7)
+      parameters:
+        - { name: page,        in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: per_page,    in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { name: unread_only, in: query, schema: { type: boolean } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationListResponse" }
+
+  /api/v1/notifications/{notification_id}/read:
+    put:
+      tags: [Notifications]
+      summary: Mark one notification as read (idempotent)
+      parameters: [{ $ref: "#/components/parameters/NotificationID" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Empty" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/notifications/read-all:
+    put:
+      tags: [Notifications]
+      summary: Mark every unread notification as read
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/EnvelopeBase"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          marked_read: { type: integer, format: int64 }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    TicketID:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    CommentID:
+      name: comment_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    AttachmentID:
+      name: attachment_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    CategoryID:
+      name: category_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    NotificationID:
+      name: notification_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    AuthSuccess:
+      description: A successful authentication response.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/EnvelopeBase"
+              - type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      access_token: { type: string }
+                      token_type:   { type: string, example: Bearer }
+                      expires_in:   { type: integer }
+                      user:         { $ref: "#/components/schemas/PublicUser" }
+    Unauthorized:
+      description: Missing or invalid bearer token.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Forbidden:
+      description: Authenticated but the role does not permit the action.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Conflict:
+      description: Conflict (e.g. duplicate slug, email already registered).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    ValidationError:
+      description: 422 — request validation failed.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ValidationErrorEnvelope" }
+
+  schemas:
+    HealthOk:
+      type: object
+      properties:
+        data:
+          type: object
+          properties: { status: { type: string, example: ok } }
+
+    Empty:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data: { nullable: true, example: null }
+
+    EnvelopeBase:
+      type: object
+      properties:
+        message: { type: string }
+
+    ErrorEnvelope:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+
+    ValidationErrorEnvelope:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string, example: validation failed }
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }
+
+    PublicUser:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        email: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    UserSummary:
+      type: object
+      properties:
+        id:   { type: integer, format: int64 }
+        name: { type: string }
+        role: { type: string, enum: [customer, agent, admin] }
+
+    UserProfileResponse:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data: { $ref: "#/components/schemas/PublicUser" }
+
+    RegisterRequest:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:     { type: string, minLength: 2, maxLength: 100 }
+        email:    { type: string, format: email, maxLength: 255 }
+        password: { type: string, minLength: 8, maxLength: 72 }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:    { type: string, format: email }
+        password: { type: string }
+
+    CategoryPublic:
+      type: object
+      properties:
+        id:          { type: string, format: uuid }
+        name:        { type: string }
+        slug:        { type: string }
+        description: { type: string, nullable: true }
+
+    CategoryListResponse:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: "#/components/schemas/CategoryPublic" }
+
+    CategoryAdminCreate:
+      type: object
+      required: [name, slug]
+      properties:
+        name:        { type: string, minLength: 2, maxLength: 100 }
+        slug:        { type: string, minLength: 2, maxLength: 120 }
+        description: { type: string, nullable: true, maxLength: 2000 }
+
+    CategoryAdminUpdate:
+      type: object
+      properties:
+        name:        { type: string, minLength: 2, maxLength: 100 }
+        slug:        { type: string, minLength: 2, maxLength: 120 }
+        description: { type: string, nullable: true, maxLength: 2000 }
+        is_active:   { type: boolean }
+
+    CategoryAdmin:
+      allOf:
+        - $ref: "#/components/schemas/CategoryPublic"
+        - type: object
+          properties:
+            is_active:  { type: boolean }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+
+    CategoryAdminListResponse:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: "#/components/schemas/CategoryAdmin" }
+
+    CategoryAdminResponse:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data: { $ref: "#/components/schemas/CategoryAdmin" }
+
+    Ticket:
+      type: object
+      properties:
+        id:          { type: string, format: uuid }
+        code:        { type: string, example: TKT-00000001 }
+        title:       { type: string }
+        description: { type: string }
+        status:      { type: string, enum: [open, in_progress, resolved, closed, reopened] }
+        priority:    { type: string, enum: [low, medium, high, urgent] }
+        category:    { $ref: "#/components/schemas/CategoryPublic" }
+        creator:     { $ref: "#/components/schemas/UserSummary" }
+        assignee:    { $ref: "#/components/schemas/UserSummary", nullable: true }
+        assigned_at: { type: string, format: date-time, nullable: true }
+        created_at:  { type: string, format: date-time }
+        updated_at:  { type: string, format: date-time }
+        sla:         { $ref: "#/components/schemas/SLAOutput", nullable: true }
+
+    SLAOutput:
+      type: object
+      properties:
+        response_due_at:       { type: string, format: date-time, nullable: true }
+        resolution_due_at:     { type: string, format: date-time, nullable: true }
+        first_responded_at:    { type: string, format: date-time, nullable: true }
+        resolved_at:           { type: string, format: date-time, nullable: true }
+        response_state:        { type: string, enum: [pending, met, breached] }
+        resolution_state:      { type: string, enum: [pending, met, breached] }
+        is_resolution_overdue: { type: boolean }
+
+    TicketResponse:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data: { $ref: "#/components/schemas/Ticket" }
+
+    TicketListResponse:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: "#/components/schemas/Ticket" }
+            meta: { $ref: "#/components/schemas/PaginationMeta" }
+
+    PaginationMeta:
+      type: object
+      properties:
+        page:         { type: integer }
+        per_page:     { type: integer }
+        total:        { type: integer, format: int64 }
+        total_pages:  { type: integer }
+        unread_total: { type: integer, format: int64, description: "Only present on notifications list." }
+
+    CreateTicketRequest:
+      type: object
+      required: [title, description, category_id]
+      properties:
+        title:       { type: string, minLength: 5, maxLength: 255 }
+        description: { type: string, minLength: 10 }
+        category_id: { type: string, format: uuid }
+        priority:    { type: string, enum: [low, medium, high, urgent] }
+
+    UpdateTicketRequest:
+      type: object
+      description: "All fields optional; at least one must be present. Customers cannot send `category_id` / `priority`."
+      properties:
+        title:       { type: string, minLength: 5, maxLength: 255 }
+        description: { type: string, minLength: 10 }
+        category_id: { type: string, format: uuid }
+        priority:    { type: string, enum: [low, medium, high, urgent] }
+
+    UpdateStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [open, in_progress, resolved, closed, reopened] }
+        note:   { type: string, maxLength: 500 }
+
+    AssignTicketRequest:
+      type: object
+      required: [agent_id]
+      properties:
+        agent_id: { type: integer, format: int64 }
+        note:     { type: string, maxLength: 500 }
+
+    HistoryRow:
+      type: object
+      properties:
+        id:           { type: string, format: uuid }
+        ticket_id:    { type: string, format: uuid }
+        actor:        { $ref: "#/components/schemas/UserSummary" }
+        action:       { type: string, enum: [created, assigned, reassigned, unassigned, status_changed] }
+        old_status:   { type: string, nullable: true }
+        new_status:   { type: string, nullable: true }
+        old_assignee: { $ref: "#/components/schemas/UserSummary", nullable: true }
+        new_assignee: { $ref: "#/components/schemas/UserSummary", nullable: true }
+        note:         { type: string, nullable: true }
+        created_at:   { type: string, format: date-time }
+
+    HistoryListResponse:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: "#/components/schemas/HistoryRow" }
+
+    Comment:
+      type: object
+      properties:
+        id:         { type: string, format: uuid }
+        ticket_id:  { type: string, format: uuid }
+        author:     { $ref: "#/components/schemas/UserSummary" }
+        body:       { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CommentRequest:
+      type: object
+      required: [body]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 5000 }
+
+    CommentResponse:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data: { $ref: "#/components/schemas/Comment" }
+
+    CommentListResponse:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: "#/components/schemas/Comment" }
+
+    TimelineItem:
+      type: object
+      properties:
+        type:        { type: string, enum: [history, comment] }
+        occurred_at: { type: string, format: date-time }
+        history:     { $ref: "#/components/schemas/HistoryRow", nullable: true }
+        comment:     { $ref: "#/components/schemas/Comment", nullable: true }
+
+    TimelineListResponse:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: "#/components/schemas/TimelineItem" }
+
+    Attachment:
+      type: object
+      description: "Storage path and stored filename are never exposed."
+      properties:
+        id:                { type: string, format: uuid }
+        ticket_id:         { type: string, format: uuid }
+        uploaded_by:       { $ref: "#/components/schemas/UserSummary" }
+        original_filename: { type: string }
+        mime_type:         { type: string }
+        size_bytes:        { type: integer, format: int64 }
+        created_at:        { type: string, format: date-time }
+
+    AttachmentResponse:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data: { $ref: "#/components/schemas/Attachment" }
+
+    AttachmentListResponse:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: "#/components/schemas/Attachment" }
+
+    DashboardResponse:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                total_tickets: { type: integer, format: int64 }
+                by_status:
+                  type: object
+                  additionalProperties: { type: integer, format: int64 }
+                by_priority:
+                  type: object
+                  additionalProperties: { type: integer, format: int64 }
+                by_category:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      category_id:   { type: string, format: uuid }
+                      category_name: { type: string }
+                      total:         { type: integer, format: int64 }
+                sla:
+                  type: object
+                  properties:
+                    response_breached:    { type: integer, format: int64 }
+                    resolution_breached:  { type: integer, format: int64 }
+                    resolution_due_soon:  { type: integer, format: int64 }
+                unread_notifications: { type: integer, format: int64 }
+
+    Notification:
+      type: object
+      properties:
+        id:         { type: string, format: uuid }
+        ticket_id:  { type: string, format: uuid, nullable: true }
+        type:       { type: string, enum: [ticket_assigned, ticket_reassigned, ticket_status_changed, ticket_commented] }
+        title:      { type: string }
+        message:    { type: string }
+        read_at:    { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    NotificationListResponse:
+      allOf:
+        - $ref: "#/components/schemas/EnvelopeBase"
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: "#/components/schemas/Notification" }
+            meta: { $ref: "#/components/schemas/PaginationMeta" }

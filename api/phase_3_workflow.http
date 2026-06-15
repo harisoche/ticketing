@@ -1,0 +1,115 @@
+### Phase 3 — Ticket assignment + status workflow + histories
+###
+### Builds on Phase 2. Promote agent/admin roles via SQL once after registration:
+###
+###   UPDATE users SET role='agent' WHERE email='agent@example.com';
+###   UPDATE users SET role='admin' WHERE email='admin@example.com';
+
+@host = http://localhost:8080
+@customerEmail = customer@example.com
+@agentEmail    = agent@example.com
+@adminEmail    = admin@example.com
+@password      = password123
+
+@customerToken = paste-customer-token
+@agentToken    = paste-agent-token
+@adminToken    = paste-admin-token
+@ticketId      = paste-ticket-uuid
+@categoryId    = paste-category-uuid
+@agentUserId   = paste-agent-int64
+
+### 1. Login as customer (paste access_token into @customerToken)
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{customerEmail}}",
+  "password": "{{password}}"
+}
+
+### 2. Login as admin / agent the same way → fill @adminToken / @agentToken / @agentUserId
+
+### 3. List categories (paste a UUID into @categoryId)
+GET {{host}}/api/v1/ticket-categories
+Authorization: Bearer {{customerToken}}
+
+### 4. Create ticket
+POST {{host}}/api/v1/tickets
+Content-Type: application/json
+Authorization: Bearer {{customerToken}}
+
+{
+  "title": "Cannot log in from mobile",
+  "description": "The application rejects valid credentials when I tap Login.",
+  "category_id": "{{categoryId}}",
+  "priority": "high"
+}
+
+### 5. Try to move unassigned ticket open -> in_progress (admin) — EXPECTED 422
+PATCH {{host}}/api/v1/tickets/{{ticketId}}/status
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "status": "in_progress"
+}
+
+### 6. Assign agent
+PATCH {{host}}/api/v1/tickets/{{ticketId}}/assign
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "agent_id": {{agentUserId}},
+  "note": "Assigned to the support agent for investigation"
+}
+
+### 7. Agent moves open -> in_progress
+PATCH {{host}}/api/v1/tickets/{{ticketId}}/status
+Authorization: Bearer {{agentToken}}
+Content-Type: application/json
+
+{
+  "status": "in_progress",
+  "note": "Investigation started"
+}
+
+### 8. Agent resolves
+PATCH {{host}}/api/v1/tickets/{{ticketId}}/status
+Authorization: Bearer {{agentToken}}
+Content-Type: application/json
+
+{
+  "status": "resolved"
+}
+
+### 9. Admin closes
+PATCH {{host}}/api/v1/tickets/{{ticketId}}/status
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "status": "closed"
+}
+
+### 10. Customer reopens their own closed ticket
+PATCH {{host}}/api/v1/tickets/{{ticketId}}/status
+Authorization: Bearer {{customerToken}}
+Content-Type: application/json
+
+{
+  "status": "reopened",
+  "note": "Issue happened again"
+}
+
+### 11. Read histories (chronological)
+GET {{host}}/api/v1/tickets/{{ticketId}}/histories
+Authorization: Bearer {{customerToken}}
+
+### 12. Agent's assigned-to-me list with status filter
+GET {{host}}/api/v1/tickets?scope=assigned_to_me&status=reopened
+Authorization: Bearer {{agentToken}}
+
+### 13. Customer's own list (default scope)
+GET {{host}}/api/v1/tickets?scope=created_by_me
+Authorization: Bearer {{customerToken}}

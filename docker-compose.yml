@@ -1,0 +1,44 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ticketing_db
+      POSTGRES_USER: ticketing_user
+      POSTGRES_PASSWORD: ticketing_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - ticketing_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ticketing_user -d ticketing_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ENV: docker
+      APP_PORT: "8080"
+      DATABASE_URL: postgres://ticketing_user:ticketing_password@postgres:5432/ticketing_db?sslmode=disable
+      JWT_SECRET: replace-with-a-random-secret-at-least-32-characters-long
+      JWT_ISSUER: ticketing-api
+      JWT_ACCESS_TOKEN_TTL: 24h
+      UPLOAD_STORAGE_DRIVER: local
+      UPLOAD_LOCAL_DIRECTORY: /app/storage/uploads
+      UPLOAD_MAX_SIZE_BYTES: "5242880"
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-password123}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ticketing_uploads:/app/storage/uploads
+    # The API does not run migrations automatically. After `docker compose
+    # up`, run `docker compose run --rm api migrate up` and
+    # `docker compose run --rm api seed`. Both binaries ship in the image.
+
+volumes:
+  ticketing_postgres_data:
+  ticketing_uploads:

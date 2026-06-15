@@ -1,0 +1,49 @@
+### Phase 6 — Search/filters/pagination + dashboard summary
+
+@host = http://localhost:8080
+@customerToken = paste-customer-token
+@agentToken    = paste-agent-token
+@adminToken    = paste-admin-token
+@agentUserId   = paste-agent-int64
+@createdFrom   = 2026-06-01T00:00:00Z
+@createdTo     = 2026-06-30T23:59:59Z
+
+### 1. Default page (per_page=20)
+GET {{host}}/api/v1/tickets
+Authorization: Bearer {{customerToken}}
+
+### 2. Page 2 with q + status + priority + date range
+GET {{host}}/api/v1/tickets?page=2&per_page=10&q=wifi&status=open&priority=high&created_from={{createdFrom}}&created_to={{createdTo}}&sort_by=created_at&sort_order=desc
+Authorization: Bearer {{customerToken}}
+
+### 3. Agent's assigned queue
+GET {{host}}/api/v1/tickets?view=assigned_to_me
+Authorization: Bearer {{agentToken}}
+
+### 4. Admin's "all tickets assigned to a specific agent"
+GET {{host}}/api/v1/tickets?view=all&assigned_to={{agentUserId}}
+Authorization: Bearer {{adminToken}}
+
+### 5. Sort by status with stable id tie-breaker
+GET {{host}}/api/v1/tickets?sort_by=status&sort_order=asc
+Authorization: Bearer {{adminToken}}
+
+### 6. Bad sort field — EXPECTED 422
+GET {{host}}/api/v1/tickets?sort_by=garbage
+Authorization: Bearer {{adminToken}}
+
+### 7. Customer tries view=all — EXPECTED 422
+GET {{host}}/api/v1/tickets?view=all
+Authorization: Bearer {{customerToken}}
+
+### 8. Dashboard summary (role-aware)
+GET {{host}}/api/v1/dashboard/summary
+Authorization: Bearer {{customerToken}}
+
+###
+GET {{host}}/api/v1/dashboard/summary
+Authorization: Bearer {{agentToken}}
+
+###
+GET {{host}}/api/v1/dashboard/summary
+Authorization: Bearer {{adminToken}}

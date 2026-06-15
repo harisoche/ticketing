@@ -1,0 +1,22 @@
+.env
+.env.local
+*.env.*
+!.env.example
+
+bin/
+build/
+dist/
+storage/
+*.out
+*.test
+coverage.*
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+PHASE_*.md
+phase-*.md

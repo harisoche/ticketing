@@ -1,0 +1,90 @@
+### Phase 5 — Category admin, classification, attachments.
+###
+### Promote admin/agent roles via SQL after registering them.
+
+@host = http://localhost:8080
+@customerEmail = customer@example.com
+@agentEmail    = agent@example.com
+@adminEmail    = admin@example.com
+@password      = password123
+
+@customerToken = paste-customer-token
+@agentToken    = paste-agent-token
+@adminToken    = paste-admin-token
+@ticketId      = paste-ticket-uuid
+@categoryId    = paste-active-category-uuid
+@attachmentId  = paste-attachment-uuid
+
+### 1. Public list of active categories
+GET {{host}}/api/v1/categories
+Authorization: Bearer {{customerToken}}
+
+### 2. Admin lists all categories (including inactive)
+GET {{host}}/api/v1/admin/categories
+Authorization: Bearer {{adminToken}}
+
+### 3. Admin creates a category
+POST {{host}}/api/v1/admin/categories
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Network",
+  "slug": "network",
+  "description": "Internet, Wi-Fi, and network access issues"
+}
+
+### 4. Admin updates a category (paste id into URL)
+PUT {{host}}/api/v1/admin/categories/{{categoryId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "description": "Wi-Fi, VPN, DNS and connectivity issues",
+  "is_active": true
+}
+
+### 5. Admin deactivates a category
+DELETE {{host}}/api/v1/admin/categories/{{categoryId}}
+Authorization: Bearer {{adminToken}}
+
+### 6. Assigned agent updates a ticket's classification
+PUT {{host}}/api/v1/tickets/{{ticketId}}/classification
+Authorization: Bearer {{agentToken}}
+Content-Type: application/json
+
+{
+  "category_id": "{{categoryId}}",
+  "priority": "urgent"
+}
+
+### 7. Customer attempts classification (EXPECTED 403)
+PUT {{host}}/api/v1/tickets/{{ticketId}}/classification
+Authorization: Bearer {{customerToken}}
+Content-Type: application/json
+
+{
+  "priority": "low"
+}
+
+### 8. Upload an attachment (PDF / PNG / JPEG / TXT)
+POST {{host}}/api/v1/tickets/{{ticketId}}/attachments
+Authorization: Bearer {{customerToken}}
+Content-Type: multipart/form-data; boundary=----formboundary
+Content-Disposition: form-data; name="file"; filename="screenshot.png"
+
+----formboundary
+< ./screenshot.png
+----formboundary--
+
+### 9. List attachments
+GET {{host}}/api/v1/tickets/{{ticketId}}/attachments
+Authorization: Bearer {{customerToken}}
+
+### 10. Download attachment
+GET {{host}}/api/v1/tickets/{{ticketId}}/attachments/{{attachmentId}}/download
+Authorization: Bearer {{customerToken}}
+
+### 11. Delete attachment (author or admin)
+DELETE {{host}}/api/v1/tickets/{{ticketId}}/attachments/{{attachmentId}}
+Authorization: Bearer {{customerToken}}

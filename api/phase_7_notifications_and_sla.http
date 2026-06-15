@@ -1,0 +1,35 @@
+### Phase 7 — Notifications + SLA
+
+@host = http://localhost:8080
+@customerToken = paste-customer-token
+@agentToken    = paste-agent-token
+@adminToken    = paste-admin-token
+@notificationId = paste-notification-uuid
+
+### 1. List own notifications
+GET {{host}}/api/v1/notifications?page=1&per_page=20
+Authorization: Bearer {{customerToken}}
+
+### 2. List ONLY unread (note `meta.unread_total`)
+GET {{host}}/api/v1/notifications?unread_only=true
+Authorization: Bearer {{agentToken}}
+
+### 3. Mark one notification as read (idempotent)
+PUT {{host}}/api/v1/notifications/{{notificationId}}/read
+Authorization: Bearer {{agentToken}}
+
+### 4. Try to mark someone else's notification — EXPECTED 404
+PUT {{host}}/api/v1/notifications/{{notificationId}}/read
+Authorization: Bearer {{customerToken}}
+
+### 5. Mark all as read
+PUT {{host}}/api/v1/notifications/read-all
+Authorization: Bearer {{agentToken}}
+
+### 6. Dashboard summary (now includes SLA + unread_notifications)
+GET {{host}}/api/v1/dashboard/summary
+Authorization: Bearer {{adminToken}}
+
+### 7. Ticket detail carries the SLA block
+GET {{host}}/api/v1/tickets/paste-ticket-id
+Authorization: Bearer {{agentToken}}

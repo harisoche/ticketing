@@ -1,0 +1,32 @@
+.git
+.gitignore
+.idea
+.vscode
+.DS_Store
+
+bin/
+build/
+dist/
+storage/
+
+# Local files
+*.env.local
+.env
+
+# Test artifacts
+*.test
+*.out
+coverage.*
+
+# Documentation that isn't required at runtime
+docs/
+docs-out/
+
+# Files in the repo root that don't need to ship
+*.md
+PHASE_*.md
+phase-*.md
+README.txt
+*.postman_collection.json
+api/
+scripts/

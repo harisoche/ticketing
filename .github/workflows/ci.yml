@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: gofmt + go vet + go test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: ticketing_user
+          POSTGRES_PASSWORD: ticketing_password
+          POSTGRES_DB: ticketing_db
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ticketing_user -d ticketing_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://ticketing_user:ticketing_password@localhost:5432/ticketing_db?sslmode=disable
+      JWT_SECRET: ci-secret-must-be-at-least-32-characters-long
+      JWT_ISSUER: ticketing-api
+      JWT_ACCESS_TOKEN_TTL: 24h
+      UPLOAD_STORAGE_DRIVER: local
+      UPLOAD_LOCAL_DIRECTORY: ./storage/uploads
+      UPLOAD_MAX_SIZE_BYTES: "5242880"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: true
+
+      - name: go mod download
+        run: go mod download
+
+      - name: gofmt -d (no diff = OK)
+        run: |
+          fmt_out=$(gofmt -d .)
+          if [ -n "$fmt_out" ]; then
+            echo "$fmt_out"
+            echo "::error::gofmt found unformatted files"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test ./...
+
+      - name: Apply migrations and run end-to-end verification
+        run: |
+          go run ./cmd/migrate up
+          go run ./cmd/api &
+          API_PID=$!
+          for i in {1..30}; do
+            curl -sS http://localhost:8080/health && break
+            sleep 1
+          done
+          # Phase 1 + 4 cover the breadth of plumbing without needing psql role
+          # tweaks; the role-promoting scripts (tickets/comments/uploads/
+          # search/notifications) need extra DB grants and are run locally.
+          bash scripts/verify_auth.sh
+          kill $API_PID
