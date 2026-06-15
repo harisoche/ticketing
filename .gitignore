@@ -3,10 +3,10 @@
 *.env.*
 !.env.example
 
-bin/
-build/
-dist/
-storage/
+/bin/
+/build/
+/dist/
+/storage/
 *.out
 *.test
 coverage.*
