@@ -32,7 +32,7 @@ services:
       UPLOAD_MAX_SIZE_BYTES: "5242880"
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-password123}
     ports:
-      - "8080:8080"
+      - "80:8080"
     volumes:
       - ticketing_uploads:/app/storage/uploads
     # The API does not run migrations automatically. After `docker compose
