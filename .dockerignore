@@ -18,8 +18,9 @@
 *.out
 coverage.*
 
-# Documentation that isn't required at runtime
-docs/
+# Documentation markdown isn't required at runtime, but keep
+# docs/embed.go and docs/openapi.yaml — imported by the API.
+docs/*.md
 docs-out/
 
 # Files in the repo root that don't need to ship
