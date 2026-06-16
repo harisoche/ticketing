@@ -81,6 +81,7 @@ func run() error {
 		TicketAttachment: handler.NewTicketAttachmentHandler(ticketSvc, cfg.UploadMaxSizeBytes),
 		Dashboard:        handler.NewDashboardHandler(ticketSvc),
 		Notification:     handler.NewNotificationHandler(ticketSvc),
+		Docs:             handler.NewDocsHandler(),
 	}
 
 	e := httpapp.NewEcho()

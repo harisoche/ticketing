@@ -27,6 +27,7 @@ type Handlers struct {
 	TicketAttachment *handler.TicketAttachmentHandler
 	Dashboard        *handler.DashboardHandler
 	Notification     *handler.NotificationHandler
+	Docs             *handler.DocsHandler
 }
 
 type RouterDeps struct {
@@ -53,6 +54,11 @@ func NewEcho() *echo.Echo {
 // RegisterRoutes wires the route table onto the Echo instance.
 func RegisterRoutes(e *echo.Echo, h Handlers, deps RouterDeps) {
 	e.GET("/health", h.Health.Get)
+
+	if h.Docs != nil {
+		e.GET("/docs", h.Docs.UI)
+		e.GET("/docs/openapi.yaml", h.Docs.Spec)
+	}
 
 	api := e.Group("/api/v1")
 	api.POST("/auth/register", h.Auth.Register)
