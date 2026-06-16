@@ -47,6 +47,7 @@ func NewEcho() *echo.Echo {
 	e.Use(echomw.RequestID())
 	e.Use(echomw.Logger())
 	e.Use(echomw.Recover())
+	e.Use(echomw.CORS())
 
 	return e
 }
